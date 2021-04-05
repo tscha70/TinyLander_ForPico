@@ -1,5 +1,5 @@
-//   >>>>>  T-I-N-Y  L-A-N-D-E-R v1.0 for ATTINY85  GPLv3 <<<<
-//              Programmer: (c) Roger Buehler 2020
+//   >>>>>  T-I-N-Y  L-A-N-D-E-R v1.0 for RPI Pico RP2040  GPLv3 <<<<
+//              Programmer: (c) Roger Buehler 2021
 //              Contact EMAIL: tscha70@gmail.com
 //        Official repository:  https://github.com/tscha70/
 //  Tiny Lander v1.0 is free software: you can redistribute it and/or modify
@@ -19,8 +19,6 @@
 //  Daniel C (Electro L.I.B) https://www.tinyjoypad.com under GPLv3
 //  to work with tinyjoypad game console's standard.
 //
-// the code works at 16MHZ internal
-// and use ssd1306xled Library for SSD1306 oled display 128x64
 
 #include <Arduino.h>
 #include "gameinterface.h"
