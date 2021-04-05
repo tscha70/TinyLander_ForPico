@@ -1,5 +1,5 @@
-//   >>>>>  T-I-N-Y  L-A-N-D-E-R v1.0 for ATTINY85  GPLv3 <<<<
-//              Programmer: (c) Roger Buehler 2020
+//   >>>>>  T-I-N-Y  L-A-N-D-E-R v1.0 for RPI Pico RP2040  GPLv3 <<<<
+//              Programmer: (c) Roger Buehler 2021
 //              Contact EMAIL: tscha70@gmail.com
 //        Official repository:  https://github.com/tscha70/
 //  Tiny Lander v1.0 is free software: you can redistribute it and/or modify
@@ -19,8 +19,6 @@
 //  Daniel C (Electro L.I.B) https://www.tinyjoypad.com under GPLv3
 //  to work with tinyjoypad game console's standard.
 //
-// the code works at 16MHZ internal
-// and use ssd1306xled Library for SSD1306 oled display 128x64
 
 #include <Arduino.h>
 #include <U8g2lib.h>
@@ -45,16 +43,14 @@ const bool IS_DEBUG = 0;
 const uint8_t PIXELWIDTH = 128;
 uint8_t buffer[PIXELWIDTH];
 uint8_t bitmap[PIXELWIDTH];
-uint8_t frameBuffer[PIXELWIDTH * 8];
+// uint8_t frameBuffer[PIXELWIDTH * 8];
 
 
 void setup() {
   u8g2.begin();
   u8g2.clearBuffer();
   u8g2.setDrawColor(1);
-  // u8g2.setBitmapMode(0);
-  u8g2.setBusClock(8000000);
-
+  
   TINYJOYPAD_INIT();
 }
 
@@ -168,7 +164,7 @@ void showAllScoresAndBonuses(GAME *game, DIGITAL *score, DIGITAL *velX, DIGITAL 
     game->Score++;
     fillData(game->Score, score);
     UpdateDisplay(2, game, score, velX, velY);
-    SOUND(129, 2);
+    SOUND(144, 2);
   }
 }
 
@@ -517,9 +513,12 @@ void UpdateDisplay(uint8_t mode, GAME * game, DIGITAL * score, DIGITAL * velX, D
   {
     for (x = 0; x < 128; x++)
     {
-      if (mode == 0) {
+      if (mode == 0)
+      {
         buffer[x] = (GameDisplay(x, y, game) | LivesDisplay(x, y, game) | DashboardDisplay(x, y) | ScoreDisplay(x, y, score) | VelocityDisplay(x, y, velX, 1) | VelocityDisplay(x, y, velY, 0) | FuelDisplay(x, y, game) | BackScroll(x, y, game));
-      } else if (mode == 1) {
+      }
+      else if (mode == 1)
+      {
         buffer[x] = (pgm_read_byte(&INTRO[x + (y * 128)]));
       }
       else if (mode == 2)
@@ -527,16 +526,9 @@ void UpdateDisplay(uint8_t mode, GAME * game, DIGITAL * score, DIGITAL * velX, D
         buffer[x] = (StarsDisplay ( x, y, game) | LivesDisplay(x, y, game) | DashboardDisplay(x, y) | ScoreDisplay(x, y, score) | VelocityDisplay(x, y, velX, 1) | VelocityDisplay(x, y, velY, 0) | FuelDisplay(x, y, game));
       }
     }
-
+    
     ConvertVerticalToHorizontalBitmap(PIXELWIDTH, buffer, bitmap);
-
-    for (int x = 0; x < PIXELWIDTH; x++)
-    {
-      frameBuffer[x + y * PIXELWIDTH] = bitmap[x];
-    }
+    u8g2.drawBitmap(0, y * 8, 16, 8, bitmap);
   }
-
-  u8g2.drawBitmap(0, 0, 16, 64, frameBuffer);
   u8g2.sendBuffer();
-
 }
