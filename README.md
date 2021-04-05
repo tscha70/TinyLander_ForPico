@@ -10,7 +10,7 @@ Components:
 6) breadboards
 7) multiple jumper calbles
 8) optional pull-down resistors (10 Ohm), can be just wire
-9) optional electrolytic condensor rated for at least 10V and 220uF
+9) optional electrolytic condenser rated for at least 10V and 220uF
 
 
 Libraries used for display:
