@@ -34,7 +34,7 @@ FOR BUTTONS:
 --------------------------------
 GP15 -> button UP
 GP14 -> button DOWN
-GP13-> button LEFT
+GP13 -> button LEFT
 GP12 -> button RIGHT
 GP11 -> button FIRE
 (all buttons to GND) 
