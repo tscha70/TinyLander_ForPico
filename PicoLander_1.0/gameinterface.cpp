@@ -17,6 +17,8 @@
 //
 //  This game uses features or part of code created by
 //  Daniel C (Electro L.I.B) https://www.tinyjoypad.com under GPLv3
+//  to work with tinyjoypad game console's standard.
+//
 
 #include <Arduino.h>
 #include "gameinterface.h"
