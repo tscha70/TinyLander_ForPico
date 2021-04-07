@@ -43,14 +43,15 @@ const bool IS_DEBUG = 0;
 const uint8_t PIXELWIDTH = 128;
 uint8_t buffer[PIXELWIDTH];
 uint8_t bitmap[PIXELWIDTH];
-// uint8_t frameBuffer[PIXELWIDTH * 8];
 
+// sound muted
+uint8_t SoundMuted;
 
 void setup() {
   u8g2.begin();
   u8g2.clearBuffer();
   u8g2.setDrawColor(1);
-  
+
   TINYJOYPAD_INIT();
 }
 
@@ -61,23 +62,25 @@ void loop() {
   GAME game;
 
 BEGIN:
+
+  SoundMuted = 0;
   game.Level = 1;
   game.Score = 0;
   game.Lives = 4;
   while (1) {
     UpdateDisplay(1, &game, &score, &velX, &velY);
     if (JOYPAD_FIRE) {
+      SoundMuted = JOYPAD_LEFT;
       if (JOYPAD_UP) {
         game.Level = 10;
-        ALERTSOUND();
+        ALERTSOUND(SoundMuted);
       }
       else if (JOYPAD_DOWN) {
         game.Lives = 255;
-        ALERTSOUND();
+        ALERTSOUND(SoundMuted);
       }
       else {
-        SOUND(100, 125);
-        SOUND(50, 125);
+        STARTSOUND(SoundMuted);
       }
 
       goto START;
@@ -86,7 +89,7 @@ BEGIN:
 
 START:
   initGame(&game);
-  INTROSOUND();
+  INTROSOUND(SoundMuted);
   while (1) {
     fillData(game.Score, &score);
     fillData(game.velocityX, &velX);
@@ -137,7 +140,7 @@ void initGame (GAME * game)
 
 void showAllScoresAndBonuses(GAME *game, DIGITAL *score, DIGITAL *velX, DIGITAL *velY)
 {
-  VICTORYSOUND();
+  VICTORYSOUND(SoundMuted);
   game->Level++;
   delay (1000);
   uint8_t bonusPoints = 0;
@@ -153,7 +156,7 @@ void showAllScoresAndBonuses(GAME *game, DIGITAL *score, DIGITAL *velX, DIGITAL 
   for (game->Stars = 1; game->Stars <= bonusPoints; game->Stars++)
   {
     UpdateDisplay(2, game, score, velX, velY);
-    HAPPYSOUND();
+    HAPPYSOUND(SoundMuted);
     delay(500);
   }
   game->Stars--;
@@ -163,9 +166,14 @@ void showAllScoresAndBonuses(GAME *game, DIGITAL *score, DIGITAL *velX, DIGITAL 
   {
     game->Score++;
     fillData(game->Score, score);
-    UpdateDisplay(2, game, score, velX, velY);
-    SOUND(144, 2);
+    if (game->Score % ((newScore - game->Score) / 20) == 0)
+    {
+      UpdateDisplay(2, game, score, velX, velY);
+      SCORESOUND(SoundMuted);
+    }
   }
+  UpdateDisplay(2, game, score, velX, velY);
+
 }
 
 void changeSpeed(GAME * game)
@@ -314,7 +322,8 @@ uint8_t getLanderSprite(uint8_t x, uint8_t y, GAME * game)
   if (game->ShipExplode > 0)
   {
     sprite = pgm_read_byte(&LANDER[(x - game->ShipPosX) + ((8 - (game->ShipExplode)) * 7) ]);
-    SOUND(20 * game->ShipExplode, 7);
+    EXPLODESOUND(SoundMuted, game->ShipExplode);
+    
     (game->ShipExplode)--;
     if (game->ShipExplode < 1)
       game->ShipExplode = 3;
@@ -526,9 +535,10 @@ void UpdateDisplay(uint8_t mode, GAME * game, DIGITAL * score, DIGITAL * velX, D
         buffer[x] = (StarsDisplay ( x, y, game) | LivesDisplay(x, y, game) | DashboardDisplay(x, y) | ScoreDisplay(x, y, score) | VelocityDisplay(x, y, velX, 1) | VelocityDisplay(x, y, velY, 0) | FuelDisplay(x, y, game));
       }
     }
-    
+
     ConvertVerticalToHorizontalBitmap(PIXELWIDTH, buffer, bitmap);
     u8g2.drawBitmap(0, y * 8, 16, 8, bitmap);
   }
+
   u8g2.sendBuffer();
 }
