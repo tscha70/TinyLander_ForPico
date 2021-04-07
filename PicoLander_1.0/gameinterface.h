@@ -16,19 +16,17 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //     
 //  This game uses features or part of code created by 
-//  Daniel C (Electro L.I.B) https://www.tinyjoypad.com under GPLv3
-//  to work with tinyjoypad game console's standard.
-//             
+//  Daniel C (Electro L.I.B) https://www.tinyjoypad.com under GPLv3           
 
 #define NUMOFGAMES 10
 #define VLimit 100
-#define MoveY 35
-#define MoveX 35
+#define MoveY 15 // 35
+#define MoveX 15 // 35
 #define TrustY 1
 #define TrustX 1
 #define GRAVITYDECY 1
 #define FULLTHRUST 18
-#define ACCELERATOR 45
+#define ACCELERATOR 35 // 45
 #define LANDINGSPEED 35
 #define BONUSSPEED1 13
 #define BONUSSPEED2 24
@@ -55,10 +53,17 @@
 
 void SOUND(uint8_t freq_, uint8_t dur);
 void TINYJOYPAD_INIT(void);
-void INTROSOUND(void);
-void VICTORYSOUND(void);
-void ALERTSOUND(void);
-void HAPPYSOUND(void);
+
+// sounds
+void INTROSOUND(uint8_t soundMuted);
+void VICTORYSOUND(uint8_t soundMuted);
+void ALERTSOUND(uint8_t soundMuted);
+void HAPPYSOUND(uint8_t soundMuted);
+void SCORESOUND(uint8_t soundMuted);
+void EXPLODESOUND(uint8_t soundMuted, uint8_t shipExplode);
+void STARTSOUND(uint8_t soundMuted);
+
+
 void SPLITDIGITS(uint16_t val, uint8_t *digits);
 
 // GameLevel: Level, ShipPosX, ShipPosY, Fuel / 100, LevelScore, FuelBonus
