@@ -14,149 +14,529 @@
 
 //  You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
-//     
-//  This game uses features or part of code created by 
-//  Daniel C (Electro L.I.B) https://www.tinyjoypad.com under GPLv3           
+//
+//  This game uses features or part of code created by
+//  Daniel C (Electro L.I.B) https://www.tinyjoypad.com under GPLv3
 
-#define NUMOFGAMES 10
-#define VLimit 100
-#define MoveY 15 // 35
-#define MoveX 15 // 35
-#define TrustY 1
-#define TrustX 1
-#define GRAVITYDECY 1
-#define FULLTHRUST 18
-#define ACCELERATOR 35 // 45
-#define LANDINGSPEED 35
-#define BONUSSPEED1 13
-#define BONUSSPEED2 24
+#include <Arduino.h>
+#include <U8g2lib.h>
+#include "Bibsi_Babsi_Algo.h"
 
-#define DIGITSIZE 4
-#define SCOREOFFSET 1
-#define SCOREDIGITS 5
-#define VELODIGITS 4
-#define VELOOFFSET 5
+#ifdef U8X8_HAVE_HW_SPI
+#include <SPI.h>
+#endif
+#ifdef U8X8_HAVE_HW_I2C
+#include <Wire.h>
+#endif
 
-// GPIO for input on device
-#define BUTTON_UP 15
-#define BUTTON_DOWN 14
-#define BUTTON_LEFT 13
-#define BUTTON_RIGHT 12
-#define BUTTON_FIRE 11
-#define SOUND_PORT 10
+#include "spritebank.h"
+#include "gameinterface.h"
 
-#define JOYPAD_LEFT  (digitalRead(BUTTON_LEFT) == 0)
-#define JOYPAD_RIGHT (digitalRead(BUTTON_RIGHT) == 0)
-#define JOYPAD_DOWN (digitalRead(BUTTON_DOWN) == 0)
-#define JOYPAD_UP  (digitalRead(BUTTON_UP) == 0)
-#define JOYPAD_FIRE (digitalRead(BUTTON_FIRE) == 0)
+#define BUFFER_LENGTH 1024
+//U8G2_SSD1309_128X64_NONAME0_1_4W_SW_SPI u8g2(U8G2_R0, /* clock=*/ 18, /* data=*/ 19, /* cs=*/ 17, /* dc=*/ 16, /* reset=*/ 20);
+U8G2_SSD1309_128X64_NONAME0_F_4W_SW_SPI u8g2(U8G2_R0, /* clock=*/ 18, /* data=*/ 19, /* cs=*/ 17, /* dc=*/ 16, /* reset=*/ 20);
 
-void SOUND(uint8_t freq_, uint8_t dur);
-void TINYJOYPAD_INIT(void);
+// consts and variables used for the converions from vertical to horizontal bitmap
+const bool IS_DEBUG = 0;
+const uint8_t PIXELWIDTH = 128;
+uint8_t buffer[PIXELWIDTH];
+uint8_t bitmap[PIXELWIDTH];
 
-// sounds
-void INTROSOUND(uint8_t soundMuted);
-void VICTORYSOUND(uint8_t soundMuted);
-void ALERTSOUND(uint8_t soundMuted);
-void HAPPYSOUND(uint8_t soundMuted);
-void SCORESOUND(uint8_t soundMuted);
-void EXPLODESOUND(uint8_t soundMuted, uint8_t shipExplode);
-void STARTSOUND(uint8_t soundMuted);
+// sound muted
+uint8_t SoundMuted;
+
+void setup() {
+  u8g2.begin();
+  u8g2.clearBuffer();
+  u8g2.setDrawColor(1);
+
+  TINYJOYPAD_INIT();
+}
+
+void loop() {
+  DIGITAL score;
+  DIGITAL velX;
+  DIGITAL velY;
+  GAME game;
+
+BEGIN:
+
+  SoundMuted = 0;
+  game.Level = 1;
+  game.Score = 0;
+  game.Lives = 4;
+  while (1) {
+    UpdateDisplay(1, &game, &score, &velX, &velY);
+    if (JOYPAD_FIRE) {
+      SoundMuted = JOYPAD_LEFT;
+      if (JOYPAD_UP) {
+        game.Level = 10;
+        ALERTSOUND(SoundMuted);
+      }
+      else if (JOYPAD_DOWN) {
+        game.Lives = 255;
+        ALERTSOUND(SoundMuted);
+      }
+      else {
+        STARTSOUND(SoundMuted);
+      }
+
+      goto START;
+    }
+  }
+
+START:
+  initGame(&game);
+  INTROSOUND(SoundMuted);
+  while (1) {
+    fillData(game.Score, &score);
+    fillData(game.velocityX, &velX);
+    fillData(game.velocityY, &velY);
+    moveShip(&game);
+    changeSpeed(&game);
+
+    UpdateDisplay(0, &game, &score, &velX, &velY);
+    if (game.EndCounter > 8) {
+      if (game.HasLanded)
+      {
+        showAllScoresAndBonuses(&game, &score, &velX, &velY);
+        delay(500);
+        goto START;
+      }
+      else
+      {
+        delay (2000);
+        if (game.Lives > 0)
+          goto START;
+        goto BEGIN;
+      }
+
+    }
+    if (game.ShipExplode > 0 || game.Collision)
+      game.EndCounter++;
+    if (game.HasLanded)
+      game.EndCounter = 10;
+  }
+}
 
 
-void SPLITDIGITS(uint16_t val, uint8_t *digits);
+void initGame (GAME * game)
+{
+  SETNEXTLEVEL(game->Level, game);
 
-// GameLevel: Level, ShipPosX, ShipPosY, Fuel / 100, LevelScore, FuelBonus
-const uint8_t GAMELEVEL [][5] PROGMEM = {
-  {44, 33, 150, 10, 75},   // entry-level (L1)
-  {110, 33, 150, 20, 75},  // canyon (L2)
-  {34, 30, 150, 20, 50},   // b-level (L1)
-  {42, 25, 100, 40, 20},   // the-drop (L2)
-  {29, 40, 100, 40, 20},   // pik (L2)
-  {35, 40, 75, 60, 10},    // pinnacles (L3)
-  {113, 30, 120, 60, 10},  // funnel (L3)
-  {28, 10, 150, 120, 10},  // journey (L4)
-  {30, 5, 150, 120, 10},   // the-zack (L4)
-  {26, 49, 150, 240, 5},   // slalom (L5)
-};
+  game->velocityY = 0;
+  game->velocityX = 0;
+  game->velXCounter = 0;
+  game->velYCounter = 0;
+  game->ShipExplode = 0;
+  game->Toggle = true;
+  game->Collision = false;
+  game->HasLanded = false;
+  game->EndCounter = 0;
+  game->Stars = 0;
+}
 
-// GameMap
-const uint8_t GAMEMAP [][27] PROGMEM = {
-  // entry-level (1)
-  {63, 44, 32, 22, 12, 6, 4, 6, 10, 18, 16, 20, 12, 36, 38, 30, 28, 26, 10, 2, 0, 0, 0, 2, 10, 28, 40},
-  {63, 63, 63, 63, 63, 63, 63, 63, 63, 63, 63, 63, 63,  63,  63, 63, 63, 63, 63, 63, 63, 63, 63, 63, 63, 63, 63},
+void showAllScoresAndBonuses(GAME *game, DIGITAL *score, DIGITAL *velX, DIGITAL *velY)
+{
+  VICTORYSOUND(SoundMuted);
+  game->Level++;
+  delay (1000);
+  uint8_t bonusPoints = 0;
 
-  // canyon (2)
-  {63, 10, 0, 0, 0, 14, 18, 14, 30, 20, 16, 19, 12, 25, 30, 30, 27, 28, 26, 4, 1, 1, 4, 4, 10, 15, 63},
-  {63, 63, 63, 45, 40, 50, 63, 63, 63, 63, 55, 63, 63, 63, 63, 50, 55, 45, 50, 63, 63, 63, 63, 55, 60, 60, 63},
+  // add bonus points
+  if ((abs(game->velocityY)) <= BONUSSPEED2)
+    bonusPoints++;
+  if ((abs(game->velocityY)) <= BONUSSPEED1)
+    bonusPoints++;
+  if (game->Fuel >= game->FuelBonus)
+    bonusPoints++;
 
-  // b-level (1)
-  {1, 1, 9, 15, 18, 20, 22, 20, 18, 15, 9, 1, 1, 9, 15, 18, 20, 22, 20, 18, 15, 9, 1, 0, 0, 0, 0},
-  {38, 38, 38, 63, 63, 63, 63, 58, 53, 48, 43, 38, 43, 48, 53, 58, 63, 63, 63, 63, 38, 38, 38, 38, 38, 38, 38},
+  for (game->Stars = 1; game->Stars <= bonusPoints; game->Stars++)
+  {
+    UpdateDisplay(2, game, score, velX, velY);
+    HAPPYSOUND(SoundMuted);
+    delay(500);
+  }
+  game->Stars--;
 
-  // the-drop (2)
-  {63, 40, 30, 20, 15, 12, 10, 12, 15, 20, 30, 40, 45, 46, 45, 36, 30, 28, 15, 10, 5, 0, 0, 0, 0, 4, 63},
-  {63, 63, 63, 63, 55, 63, 60, 63, 63, 63, 63, 63, 63, 63, 63, 63, 63, 63, 55, 45, 40, 30, 30, 63, 63, 63, 63},
+  uint16_t newScore = game->Score + game->LevelScore  + (game->LevelScore * bonusPoints );
+  while (game->Score < newScore)
+  {
+    game->Score++;
+    fillData(game->Score, score);
+    if (game->Score % ((newScore - game->Score) / 20) == 0)
+    {
+      UpdateDisplay(2, game, score, velX, velY);
+      SCORESOUND(SoundMuted);
+    }
+  }
+  UpdateDisplay(2, game, score, velX, velY);
 
-  // pik (2)
-  {30, 2, 3, 3, 2, 12, 12, 1, 20, 20, 15, 10, 7, 5, 5, 7, 12, 20, 22, 22, 22, 22, 18, 0, 0, 0, 0},
-  {30, 54, 60, 50, 50, 40, 59, 40, 48, 40, 45, 50, 53, 55, 55, 53, 47, 40, 38, 38, 38, 60, 38, 60, 34, 32, 25},
+}
 
-  // pinnacles (3)
-  {5, 3, 2, 2, 5, 12, 10, 12, 15, 40, 42, 40, 0, 0, 0, 40, 45, 40, 10, 8, 5, 2, 2, 2, 7, 8, 9},
-  {63, 55, 63, 63, 55, 63, 55, 63, 63, 60, 63, 63, 63, 63, 63, 63, 63, 63, 55, 55, 57, 57, 63, 63, 63, 63, 63},
+void changeSpeed(GAME * game)
+{
+  game->ThrustLEFT = JOYPAD_LEFT;
+  game->ThrustRIGHT = JOYPAD_RIGHT;
+  game->ThrustUP = JOYPAD_FIRE;
+  game->Toggle = !game->Toggle;
 
-  // funnel (3)
-  {0, 0, 0, 0, 20, 23, 1, 23, 22, 1, 20, 19, 18, 1, 16, 15, 1, 13, 12, 11, 10, 1, 8, 7, 6, 5, 4},
-  {20, 30, 36, 36, 62, 36, 36, 37, 63, 39, 40, 41, 42, 63, 44, 63, 46, 47, 63, 49, 50, 62, 52, 63, 54, 55, 56},
+  if (game->ThrustLEFT && game->Fuel > 0)
+  {
+    game->Fuel -= (FULLTHRUST / 2);
+    game->velocityX += TrustX;
+    if ((game->velocityX) > VLimit)
+      game->velocityX  = VLimit;
+  }
+  else if (game->ThrustRIGHT && game->Fuel > 0)
+  {
+    game->Fuel -= (FULLTHRUST / 2);
+    game->velocityX -= TrustX;
+    if ((game->velocityX) < -VLimit)
+      game->velocityX  = -VLimit;
+  }
 
-  // journey (4)
-  {35, 35, 25, 5, 5, 5, 5, 10, 10, 5, 5, 30, 40, 45, 45, 40, 30, 20, 40, 20, 20, 48, 0, 0, 0, 7, 40},
-  {63, 63, 63, 63, 63, 35, 30, 30, 63, 63, 63, 63, 63, 63, 63, 63, 63, 63, 63, 63, 63, 63, 63, 63, 63, 63, 63},
+  if (game->ThrustUP && game->Fuel > 0)
+  {
+    game->Fuel -= (FULLTHRUST * 2);
+    game->velocityY += TrustY;
+    if ((game->velocityY) > VLimit)
+      game->velocityY  = VLimit;
+  }
+  else
+  {
+    game->velocityY -= (GRAVITYDECY);
+    if ((game->velocityY) < -VLimit)
+      game->velocityY  = -VLimit;
+  }
 
-  // the-zack (4)
-  {45, 45, 45, 20, 20, 20, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 20, 1, 1, 1, 1, 1, 35, 0, 0, 0, 0},
-  {63, 63, 63, 62, 62, 62, 63, 40, 40, 63, 60, 20, 40, 63, 63, 63, 63, 40, 40, 63, 63, 63, 63, 61, 61, 61, 61},
+  if ((game->Fuel) <= 0)
+    game->Fuel = 0;
+}
 
-  // slalom (5)
-  {1, 1, 1, 5, 41, 44, 41, 5, 1, 1, 1, 1, 1, 1, 1, 5, 41, 44, 41, 5, 1, 1, 2, 1, 0, 0, 0},
-  {45, 63, 55, 63, 63, 60, 63, 63, 63, 59, 34, 17, 34, 59, 63, 63, 63, 59, 63, 63, 63, 59, 23, 20, 55, 23, 25}
-};
+void moveShip(GAME * game)
+{
+  if (game->ShipExplode > 0 || game->Collision || game->HasLanded) return;
 
-typedef struct GAME {
-  uint16_t Score = 0;
-  uint8_t Stars = 0;
-  uint8_t ShipPosX;
-  uint8_t ShipPosY;
-  uint8_t ThrustUP;
-  uint8_t ThrustLEFT;
-  uint8_t ThrustRIGHT;
-  short Fuel;
-  short FuelBonus;
+  game->velXCounter += abs(game->velocityX);
+  game->velYCounter += abs(game->velocityY);
 
-  short velocityY;
-  short velocityX;
-  uint16_t velXCounter;
-  uint16_t velYCounter;
+  if ((game->velXCounter) >= MoveX) {
+    game->velXCounter = 0;
+    if ((game->velocityX) > 0)
+      game->ShipPosX += 1;
+    if ((game->velocityX) < 0)
+      game->ShipPosX -= 1;
+  }
 
-  bool Toggle;
-  uint8_t ShipExplode;
-  bool Collision;
-  bool HasLanded;
-  uint8_t EndCounter;
+  if (game->velYCounter >= MoveY) {
+    uint8_t inc = (abs(game->velocityY) / ACCELERATOR) + 1;
+    (game->velYCounter) = 0;
+    if ((game->velocityY) > 0)
+      game->ShipPosY -= inc;
+    if (game->velocityY < 0)
+      game->ShipPosY += inc;
+  }
 
-  uint8_t Level;
-  uint8_t LevelScore;
-  uint8_t LandingPadLEFT;
-  uint8_t LandingPadRIGHT;
+  // boundaries....
+  if (game->ShipPosX > 121)
+  {
+    game->ShipPosX = 121;
+  }
+  else if (game->ShipPosX < 23)
+  {
+    game->ShipPosX = 23;
+  }
+  if (game->ShipPosY > 55)
+  {
+    game->ShipPosY = 55;
+  }
+}
 
-  uint8_t Lives;
-} GAME;
+void fillData(long myValue, DIGITAL * data)
+{
+  SPLITDIGITS(abs(myValue), data->D);
+  data->IsNegative = (myValue < 0);
+}
 
-uint8_t GETLANDSCAPE(uint8_t x, uint8_t y, uint8_t level, GAME *game);
-void SETNEXTLEVEL(uint8_t level, GAME *game);
+uint8_t ScoreDisplay(uint8_t x, uint8_t y, DIGITAL * score) {
+  // show score within the give limits on lin 1
+  if  ((y != 1) || (x < SCOREOFFSET) || (x > (SCOREOFFSET + (SCOREDIGITS * DIGITSIZE) - 1))) {
+    return 0;
+  }
+  // show all of the file digits
+  uint8_t part =  (x - SCOREOFFSET) / (DIGITSIZE);
+  return pgm_read_byte(&DIGITS[x - SCOREOFFSET - (DIGITSIZE * part) + (score->D[(SCOREDIGITS - 1) - part] * DIGITSIZE)]);
+}
 
-typedef struct DIGITAL {
-  uint8_t D[5];
-  bool IsNegative;
-} DIGITAL;
+uint8_t VelocityDisplay(uint8_t x, uint8_t y, DIGITAL * velocity, uint8_t horizontal)
+{
+  // if on line 4 or 5  for horizontal(4) an vertical(4) speed
+  if ((horizontal == 1 && y != 4) || (horizontal == 0 && y != 5)) {
+    return 0;
+  }
+  // display velocity within the limits ...
+  if ((x < VELOOFFSET) || (x > (VELOOFFSET + (VELODIGITS * DIGITSIZE)) - 1)) {
+    return 0;
+  }
+  // show plus or minus sign
+  if ((x >= VELOOFFSET) && (x < (VELOOFFSET + DIGITSIZE))) {
+    return pgm_read_byte(&DIGITS[x - VELOOFFSET + ((10 + (velocity->IsNegative)) * DIGITSIZE)]);
+  }
+  // show just 3 digits
+  uint8_t part =  ((x - VELOOFFSET) / (DIGITSIZE));
+  return pgm_read_byte(&DIGITS[x - VELOOFFSET - (DIGITSIZE * part) + (velocity->D[(VELODIGITS - 1) - part] * DIGITSIZE)]);
+}
+uint8_t DashboardDisplay(uint8_t x, uint8_t y)
+{
+  if (x >= 0 && x <= 22) {
+    return pgm_read_byte(&DASHBOARD[x + y * 23]);
+  }
+  return 0x00;
+}
+
+uint8_t LanderDisplay(uint8_t x, uint8_t y, GAME * game) {
+  uint8_t line = game->ShipPosY / 8;
+  uint8_t offset = game->ShipPosY % 8;
+  if (y == line || ((y == line + 1) && offset > 0))
+  {
+    if (((x - game->ShipPosX) >= 0) && ((x - game->ShipPosX) < 7)) {
+      uint8_t sprite = getLanderSprite (x, y, game);
+      if (offset == 0 && y == line)
+        return sprite;
+      if (offset > 0 && y == line)
+        return sprite << offset;
+      if (offset > 0 && y == (line + 1))
+        return sprite >> (8 - offset);
+    }
+  }
+  return 0x00;
+}
+
+uint8_t getLanderSprite(uint8_t x, uint8_t y, GAME * game)
+{
+  uint8_t sprite = 0x00;
+
+  if (game->ShipExplode > 0)
+  {
+    sprite = pgm_read_byte(&LANDER[(x - game->ShipPosX) + ((8 - (game->ShipExplode)) * 7) ]);
+    EXPLODESOUND(SoundMuted, game->ShipExplode);
+    
+    (game->ShipExplode)--;
+    if (game->ShipExplode < 1)
+      game->ShipExplode = 3;
+    return sprite;
+  }
+
+  // top sprite (4 bit)
+  if (game->ThrustLEFT)
+    sprite = pgm_read_byte(&LANDER[(x - game->ShipPosX) + 21]);
+  else if (game->ThrustRIGHT)
+    sprite = pgm_read_byte(&LANDER[(x - game->ShipPosX) + 28]);
+  else
+    sprite = pgm_read_byte(&LANDER[(x - game->ShipPosX) ]);
+
+  // bottom spite (4 bit)
+  if (game->ThrustUP && game->Toggle && game->Fuel > 0)
+    return (sprite |= pgm_read_byte(&LANDER[(x - game->ShipPosX) + 14]));
+  else
+    return (sprite |= pgm_read_byte(&LANDER[(x - game->ShipPosX) + 7]));
+}
+
+uint8_t FuelDisplay(uint8_t x, uint8_t y, GAME * game)
+{
+  if (y != 6) return 0x00;
+  if (x > 4 && x <= 19)
+  {
+    // max fuel = 15.000 Liter - each liter = 1 fuel-bar we have 15 bars
+    if ((game->Fuel / 1000) + 1 > x - 4 || ((x - 4 == 1) && game->Fuel > 0))
+      return 0xF8;
+    else
+      return 0x00;
+  }
+  return 0x00;
+}
+
+uint8_t GameDisplay(uint8_t x, uint8_t y, GAME * game)
+{
+  const uint8_t offset = 23;
+  if (x >= offset)
+  {
+    uint8_t frame;
+    if (x == offset || x == 127)
+      // left and right border-line
+      frame = 0xFF;
+    else
+      // draw the map from the coordinates given by the GAMEMAP
+      frame = GETLANDSCAPE(x - offset, y, ((game->Level - 1) * 2), game);
+
+    uint8_t ship = LanderDisplay(x, y, game);
+
+    if (y == 7 && x >= (game->LandingPadLEFT + offset) && x <= (game->LandingPadRIGHT + offset))
+    {
+      if (ship != 0 && (0xFC | ship) != (0xFC + ship))
+      {
+        if (abs(game->velocityY) <= LANDINGSPEED && (game->ShipPosX >= game->LandingPadLEFT + offset) && (game->ShipPosX + 7 <= game->LandingPadRIGHT + offset) )
+        {
+          game->HasLanded = true;
+          return frame | ship;
+        }
+        else
+        {
+          if (!game->Collision)
+            game->Lives--;
+          game->ShipExplode = 3;
+          game->Collision = true;
+
+          return frame | LanderDisplay(x, y, game);
+        }
+      }
+    }
+    else if  ((frame != 0 && ship != 0) && (frame | ship) != (frame + ship))
+    {
+      if (!game->Collision)
+        game->Lives--;
+      game->ShipExplode = 3;
+      game->Collision = true;
+      return frame | LanderDisplay(x, y, game);
+    }
+
+    return frame | ship;
+  }
+  return 0x00;
+}
+
+uint8_t StarsDisplay(uint8_t x, uint8_t y, GAME * game)
+{
+  const uint8_t o1 = 23;
+  uint8_t bg = 0x00;
+  if (y == 0 && x > o1)
+  {
+    bg |= 0x01;
+  }
+  if (x == o1)
+  {
+    bg |= 0xFF;
+  }
+  if (x == 127)
+  {
+    bg |= 0xFF;
+  }
+  if (y == 7 && x > o1)
+  {
+    bg |= 0x80;
+  }
+
+  const uint8_t offset = 40;
+  if (y > 1 && y < 5)
+  {
+    if (x > offset &&  x < (offset + 72))
+    {
+      if (game->Stars > (x - offset) / 24)
+      {
+        return pgm_read_byte(&STARFULL[((x - offset) % 24) + ((y - 2) * 24)] );
+      }
+      else
+      {
+        return pgm_read_byte(&STAROUTLINE[((x - offset) % 24) + ((y - 2) * 24)] );
+      }
+    }
+  }
+  return bg;
+}
+
+uint8_t BackScroll(uint8_t xPASS, uint8_t yPASS, GAME *game) {
+  /*uint16_t TMP=xPASS+(yPASS*128);
+    if (TMP) {}
+    return pgm_read_byte(&BackScroll[TMP]);*/
+  if (xPASS < 24) return 0;
+  uint8_t Xcep = (map(game->ShipPosX, 0, 127, 32, 0)) - 16;
+  uint8_t Ycep = (map(game->ShipPosY, 0, 63, 32, 0)) - 16;;
+  return blitzSprite_TLANDER(Xcep, Ycep - 16, xPASS, yPASS, 0, BACKSCROLL);
+}
+
+uint8_t blitzSprite_TLANDER(int8_t xPos, int8_t yPos, uint8_t xPASS, uint8_t yPASS, uint8_t FRAME, const uint8_t *SPRITES) {
+  uint8_t OUTBYTE;
+  uint8_t WSPRITE = (pgm_read_byte(&SPRITES[0]));
+  uint8_t HSPRITE = (pgm_read_byte(&SPRITES[1]));
+  uint16_t Wmax = ((HSPRITE * WSPRITE) + 1);
+  uint16_t PICBYTE = FRAME * (Wmax - 1);
+  int8_t RECUPELINEY = RecupeLineY_TLANDER(yPos);
+  if ((xPASS > ((xPos + (WSPRITE - 1)))) || (xPASS < xPos) || ((RECUPELINEY > yPASS) || ((RECUPELINEY + (HSPRITE)) < yPASS))) {
+    return 0x00;
+  }
+  int8_t SPRITEyLINE = (yPASS - (RECUPELINEY));
+  uint8_t SPRITEyDECALAGE = (RecupeDecalageY_TLANDER(yPos));
+  uint16_t ScanA = (((xPASS - xPos) + (SPRITEyLINE * WSPRITE)) + 2);
+  uint16_t ScanB = (((xPASS - xPos) + ((SPRITEyLINE - 1) * WSPRITE)) + 2);
+  if (ScanA > Wmax) {
+    OUTBYTE = 0x00;
+  } else {
+    OUTBYTE = SplitSpriteDecalageY_TLANDER(SPRITEyDECALAGE, pgm_read_byte(&SPRITES[ScanA + (PICBYTE)]), 1);
+  }
+  if ((SPRITEyLINE > 0)) {
+    uint8_t OUTBYTE2 = SplitSpriteDecalageY_TLANDER(SPRITEyDECALAGE, pgm_read_byte(&SPRITES[ScanB + (PICBYTE)]), 0);
+    if (ScanB > Wmax) {
+      return OUTBYTE;
+    } else {
+      return OUTBYTE | OUTBYTE2;
+    }
+  } else {
+    return OUTBYTE;
+  }
+}
+
+
+uint8_t SplitSpriteDecalageY_TLANDER(uint8_t decalage, uint8_t Input, uint8_t UPorDOWN) {
+  if (UPorDOWN) {
+    return Input << decalage;
+  }
+  return Input >> (8 - decalage);
+}
+
+int8_t RecupeLineY_TLANDER(int8_t Valeur) {
+  return (Valeur >> 3);
+}
+
+uint8_t RecupeDecalageY_TLANDER(uint8_t Valeur) {
+  return (Valeur - ((Valeur >> 3) << 3));
+}
+
+uint8_t LivesDisplay(uint8_t x, uint8_t y, GAME * game)
+{
+  const uint8_t offset = 1;
+  if (y == 7 && x >= offset && x < (4 * 5) + offset)
+  {
+    if (game->Lives > (x - offset) / 5)
+      return pgm_read_byte(&LIVE[(x - offset) % 5]);
+  }
+  return 0x00;
+}
+
+// formerly known as Tiny_Flip -> sends the graphics to the display to show up there
+void UpdateDisplay(uint8_t mode, GAME * game, DIGITAL * score, DIGITAL * velX, DIGITAL * velY) {
+  uint8_t y, x;
+  for (y = 0; y < 8; y++)
+  {
+    for (x = 0; x < 128; x++)
+    {
+      if (mode == 0)
+      {
+        buffer[x] = (GameDisplay(x, y, game) | LivesDisplay(x, y, game) | DashboardDisplay(x, y) | ScoreDisplay(x, y, score) | VelocityDisplay(x, y, velX, 1) | VelocityDisplay(x, y, velY, 0) | FuelDisplay(x, y, game) | BackScroll(x, y, game));
+      }
+      else if (mode == 1)
+      {
+        buffer[x] = (pgm_read_byte(&INTRO[x + (y * 128)]));
+      }
+      else if (mode == 2)
+      {
+        buffer[x] = (StarsDisplay ( x, y, game) | LivesDisplay(x, y, game) | DashboardDisplay(x, y) | ScoreDisplay(x, y, score) | VelocityDisplay(x, y, velX, 1) | VelocityDisplay(x, y, velY, 0) | FuelDisplay(x, y, game));
+      }
+    }
+
+    ConvertVerticalToHorizontalBitmap(PIXELWIDTH, buffer, bitmap);
+    u8g2.drawBitmap(0, y * 8, 16, 8, bitmap);
+  }
+
+  u8g2.sendBuffer();
+}
