@@ -17,8 +17,6 @@
 //
 //  This game uses features or part of code created by
 //  Daniel C (Electro L.I.B) https://www.tinyjoypad.com under GPLv3
-//  to work with tinyjoypad game console's standard.
-//
 
 #include <Arduino.h>
 #include "gameinterface.h"
@@ -140,21 +138,44 @@ void SOUND(uint8_t freq, uint8_t dur) {
   }
 }
 
-void INTROSOUND()
+void INTROSOUND(uint8_t soundMuted)
 {
+  if (soundMuted) return;
   SOUND(80, 55); delayMicroseconds(20); SOUND(90, 55); delayMicroseconds(20); SOUND(100, 55); SOUND(115, 255); SOUND(115, 255);
 }
-void VICTORYSOUND()
+void VICTORYSOUND(uint8_t soundMuted)
 {
+  if (soundMuted) return;
   SOUND(111, 100); delayMicroseconds(20); SOUND(111, 90); delayMicroseconds(20); SOUND(144, 255); SOUND(144, 255); SOUND(144, 255);
 }
 
-void ALERTSOUND()
+void ALERTSOUND(uint8_t soundMuted)
 {
+  if (soundMuted) return;
   SOUND(150, 100); delayMicroseconds(100); SOUND(150, 90); delayMicroseconds(100); SOUND(150, 100);
 }
 
-void HAPPYSOUND()
+void HAPPYSOUND(uint8_t soundMuted)
 {
+  if (soundMuted) return;
   SOUND(75, 90); delayMicroseconds(10); SOUND(114, 90); SOUND(121, 90);
+}
+
+void SCORESOUND(uint8_t soundMuted)
+{
+  if (soundMuted) return;
+  SOUND(129, 2);
+}
+
+void EXPLODESOUND(uint8_t soundMuted, uint8_t shipExplode)
+{
+  if (soundMuted) return;
+  SOUND(20 * shipExplode, 7);
+}
+
+void STARTSOUND(uint8_t soundMuted)
+{
+  if (soundMuted) return;
+  SOUND(100, 125);
+  SOUND(50, 125);
 }
